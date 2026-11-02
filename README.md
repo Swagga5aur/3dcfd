@@ -1,5 +1,5 @@
 
-# AI 3D Studio — Prototype 0.2
+# 3D CFD Studio — Prototype 0.2
 
 A lean Windows desktop starter for AI-assisted 3D model creation and modification.
 
