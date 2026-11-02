@@ -8,15 +8,29 @@ use std::time::Duration;
 
 const SERVICE: &str = "ai-3d-studio";
 
-/// Fixed endpoint + auth scheme per provider. Only these hosts can ever be contacted,
-/// so a compromised webview cannot use this command to send the key anywhere else.
+#[derive(Clone, Copy)]
+enum AuthScheme {
+    Anthropic,
+    Bearer,
+}
+
+/// Fixed endpoint + auth scheme per provider. A compromised webview cannot use
+/// this command to send a stored key to an arbitrary host.
 struct ProviderConfig {
     base_url: &'static str,
+    auth: AuthScheme,
 }
 
 fn provider_config(provider: &str) -> Result<ProviderConfig, String> {
     match provider {
-        "anthropic" => Ok(ProviderConfig { base_url: "https://api.anthropic.com" }),
+        "anthropic" => Ok(ProviderConfig {
+            base_url: "https://api.anthropic.com",
+            auth: AuthScheme::Anthropic,
+        }),
+        "openrouter" => Ok(ProviderConfig {
+            base_url: "https://openrouter.ai/api",
+            auth: AuthScheme::Bearer,
+        }),
         other => Err(format!("Unknown AI provider: {other}")),
     }
 }
@@ -61,7 +75,6 @@ pub struct AiResponse {
 #[tauri::command]
 pub async fn ai_request(provider: String, path: String, body: Value) -> Result<AiResponse, String> {
     let cfg = provider_config(&provider)?;
-    // Only the API's versioned endpoints; no traversal or absolute URLs.
     if !path.starts_with("/v1/") || path.contains("..") || path.contains("://") {
         return Err("Invalid API path.".into());
     }
@@ -75,11 +88,17 @@ pub async fn ai_request(provider: String, path: String, body: Value) -> Result<A
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client
+    let mut request = client
         .post(format!("{}{}", cfg.base_url, path))
-        .header("x-api-key", key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&body)
+        .json(&body);
+    request = match cfg.auth {
+        AuthScheme::Anthropic => request
+            .header("x-api-key", key)
+            .header("anthropic-version", "2023-06-01"),
+        AuthScheme::Bearer => request.bearer_auth(key),
+    };
+
+    let resp = request
         .send()
         .await
         .map_err(|e| format!("Network error: {e}"))?;
