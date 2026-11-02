@@ -33,3 +33,5 @@ button.secondary { background: #202c39; color: #dce7f1; border-color: #3b4b5c; }
 .modal-row { display: flex; gap: 8px; margin: 8px 0; }
 .modal .muted { font-size: 10px; line-height: 1.5; }
 .ok { color: #7fd6a0; font-weight: 600; margin-left: 6px; }
+
+.modal select { width: 100%; padding: 8px; background: #0b131c; color: #e5edf4; border: 1px solid #354657; border-radius: 6px; }

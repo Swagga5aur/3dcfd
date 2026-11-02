@@ -11,8 +11,8 @@ A lean Windows desktop starter for AI-assisted 3D model creation and modificatio
 - Export STL
 - Basic model inspection
 - Scale and translation operations
-- **AI agent** (Claude via the Anthropic API) that inspects the model and acts only through validated tools
-- Provider-independent `AgentProvider` interface; Claude is the first adapter
+- **AI agent** (OpenRouter or Claude) that inspects the model and acts only through validated tools
+- Provider-independent `AgentProvider` interface with OpenRouter and Claude adapters
 - API key stored in Windows Credential Manager via Rust; never in the webview, project files or browser storage
 - Hybrid permissions: small changes auto-apply, larger ones show a preview and need approval
 - Real undo/redo backed by an operation ledger
@@ -21,7 +21,7 @@ A lean Windows desktop starter for AI-assisted 3D model creation and modificatio
 
 ## Important status
 
-This is a foundation, not a finished product. The agent logic is unit-tested; the Rust backend and UI have **not yet been compiled or run on Windows** (see `docs/IMPLEMENTATION_NOTES.md`). You need your own Anthropic API key (API billing is separate from a Claude subscription). The assistant can currently only resize/move the whole model.
+This is a foundation, not a finished product. The agent logic is unit-tested; the Rust backend and UI have **not yet been compiled or run on Windows** (see `docs/IMPLEMENTATION_NOTES.md`). You need your own provider API key. OpenRouter offers rate-limited free models; Claude API usage is billed separately from a Claude subscription. The assistant can currently only resize/move the whole model.
 
 The first version applies object-level transforms in the viewport after approval. Project saving currently stores metadata and transform state, not the imported geometry asset. True undo/redo, remeshing, sculpting, support analysis, texture displacement, multicolour 3MF export, and image/text-to-3D generation are not implemented yet.
 
@@ -36,7 +36,7 @@ Web vs desktop:
 | | Desktop (Tauri) | Web (Pages) |
 | --- | --- | --- |
 | API key | Windows Credential Manager, used only in Rust | Held in page memory, lost on reload |
-| API calls | Via Rust, fixed host allowlist | Direct from browser to Anthropic |
+| API calls | Via Rust, fixed host allowlist | Direct from browser to selected provider |
 | Everything else | Same | Same |
 
 In the web version the key is visible to the page's own JavaScript, so use a key with a spend limit and only the official site you deployed. Do not put a key in the repo or in build settings: it would be public.
@@ -89,7 +89,7 @@ The installer/bundle output is created under `src-tauri/target/release/bundle/`.
    - “double its width”
 3. The assistant inspects the model and calls tools. Small changes apply immediately; larger ones show a preview and wait for **Approve** / **Reject**.
 4. Use Undo/Redo (toolbar) to reverse any operation.
-5. Add your API key first: **Settings → Claude API key**.
+5. Add your API key first: **Settings → AI provider → API key** (OpenRouter is the default).
 6. Save project to `.a3d.json`; export the current mesh to STL.
 
 Units are whatever units the imported model uses. STL files do not encode units; this prototype assumes millimetres for display only if the source model was authored that way.

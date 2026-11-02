@@ -10,8 +10,9 @@
 | Argument validation (one schema → sent to model and used to validate) | `src/agent/schema.ts` | Implemented, **unit-tested** |
 | Hybrid permission policy | `src/agent/permissions.ts` | Implemented, **unit-tested** |
 | Agent loop (validate → permission → approval → execute) | `src/agent/agentManager.ts` | Implemented, **unit-tested** with a scripted fake provider |
-| Claude adapter (Anthropic Messages API, tool use) | `src/agent/providers/claude.ts` | Implemented, **unit-tested against a fake transport**; never called the real API |
-| Secure key storage + allowlisted HTTPS (Rust) | `src-tauri/src/ai.rs` | Written, **not compiled** |
+| Claude adapter (Anthropic Messages API, tool use) | `src/agent/providers/claude.ts` | Implemented, **unit-tested against a fake transport** |
+| OpenRouter adapter (OpenAI-compatible Chat Completions, tool use) | `src/agent/providers/openrouter.ts` | Implemented, **unit-tested against a fake transport** |
+| Secure key storage + allowlisted HTTPS for Anthropic and OpenRouter (Rust) | `src-tauri/src/ai.rs` | Written, **not compiled** |
 | UI: chat, approval card, settings, undo/redo, history | `src/App.tsx`, `src/viewport/Viewport.tsx` | Written, **not run** |
 
 Run the logic tests with `npm install && npm test` (20 tests, no network or API key needed).
@@ -52,7 +53,7 @@ Every modification goes through `StudioStore.commit()` and is recorded, so undo 
 3. Mesh representation in the geometry layer (Manifold-3D) so operations work on geometry, not just the object transform.
 4. Region selection → tools that take a region.
 5. Analysis tools (wall thickness, overhangs) as read-only tools; then their fixes as approval-gated tools.
-6. Second provider adapter (OpenAI) to prove the abstraction; streaming.
+6. Add further provider adapters as needed; add streaming.
 
 ## Reference projects (licence note)
 
