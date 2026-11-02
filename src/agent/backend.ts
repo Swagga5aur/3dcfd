@@ -4,14 +4,13 @@ import type { Transport } from "./types";
 export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /**
- * Two ways to reach an AI provider, same interface:
+ * - Desktop (Tauri): keys live in Windows Credential Manager and are attached in Rust.
+ * - Web (GitHub Pages): the key is held in this module's memory only and is lost on reload.
+ *   Requests go directly from the browser to the selected provider.
  *
- * - Desktop (Tauri): the key lives in the Windows Credential Manager and is
- *   attached inside Rust. It never enters the webview.
- * - Web (e.g. GitHub Pages): there is no backend, so the user's own key is held
- *   in this variable ONLY — never localStorage, cookies or files — and is lost on
- *   reload. Requests go straight from the browser to the provider. Anyone using
- *   the web build should use a key with a spend limit.
+ * Browser keys are necessarily available to the page's JavaScript while it is running.
+ * For a public deployment, use a limited OpenRouter key and avoid sharing the site with
+ * anyone you do not trust.
  */
 const memoryKeys = new Map<string, string>();
 
@@ -21,14 +20,16 @@ const WEB_ENDPOINTS: Record<string, { base: string; headers: (key: string) => Re
     headers: key => ({
       "x-api-key": key,
       "anthropic-version": "2023-06-01",
-      // Required by Anthropic to acknowledge a key is being used from a browser.
       "anthropic-dangerous-direct-browser-access": "true"
     })
+  },
+  openrouter: {
+    base: "https://openrouter.ai/api",
+    headers: key => ({ Authorization: `Bearer ${key}` })
   }
 };
 
 export const backend = {
-  /** True when keys are stored securely by the OS rather than held in page memory. */
   secureStorage: isTauri,
 
   async hasApiKey(provider: string): Promise<boolean> {
@@ -54,6 +55,7 @@ export const backend = {
     if (!endpoint) throw new Error(`Unknown AI provider: ${provider}`);
     if (!key) throw new Error("No API key set. Add one in Settings.");
     if (!path.startsWith("/v1/")) throw new Error("Invalid API path.");
+
     let res: Response;
     try {
       res = await fetch(endpoint.base + path, {
