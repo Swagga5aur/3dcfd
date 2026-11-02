@@ -1,0 +1,39 @@
+name: Build Windows app
+
+# Push a tag like v0.2.1 to publish a downloadable installer on the repo's Releases page.
+# Pushes to main and manual runs just build it and attach the installer to the workflow run.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the release
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm install
+      - run: npm test
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: "AI 3D Studio ${{ github.ref_name }}"
+          releaseBody: "Windows installer. The app is not code-signed, so Windows SmartScreen may warn: choose More info → Run anyway."
+          releaseDraft: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: src-tauri/target/release/bundle/nsis/*.exe
