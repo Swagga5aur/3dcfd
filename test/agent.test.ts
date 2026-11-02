@@ -5,6 +5,7 @@ import { AgentManager, type ApprovalRequest } from "../src/agent/agentManager";
 import { createDefaultRegistry } from "../src/agent/tools";
 import { DEFAULT_PERMISSIONS, assessOperation } from "../src/agent/permissions";
 import { ClaudeProvider } from "../src/agent/providers/claude";
+import { OpenRouterProvider } from "../src/agent/providers/openrouter";
 import { validate } from "../src/agent/schema";
 import { ProviderError, type AgentProvider, type ProviderRequest, type ProviderResponse, type Transport } from "../src/agent/types";
 
@@ -245,4 +246,74 @@ test("claude: maps HTTP errors to readable ProviderErrors", async () => {
   await assert.rejects(mk(429, { error: { message: "slow down" } }), /rate limit.*slow down/);
   await assert.rejects(mk(500, null), /500/);
   await assert.rejects(mk(200, { nope: true }), /Unexpected response/);
+});
+
+test("openrouter: builds chat-completions requests and round-trips tool calls/results", async () => {
+  let sent: any;
+  const provider = new OpenRouterProvider({
+    transport: async request => {
+      sent = request;
+      return {
+        status: 200,
+        body: {
+          choices: [{
+            finish_reason: "tool_calls",
+            message: {
+              content: "Checking the model.",
+              tool_calls: [{
+                id: "call_1",
+                type: "function",
+                function: { name: "get_model_info", arguments: "{}" }
+              }]
+            }
+          }]
+        }
+      };
+    },
+    model: "google/gemma-4-26b-a4b-it:free"
+  });
+  const res = await provider.complete({
+    system: "sys",
+    tools: createDefaultRegistry().specs().slice(0, 1),
+    messages: [
+      { role: "user", content: [{ type: "text", text: "inspect it" }] },
+      { role: "assistant", content: [{ type: "tool_call", id: "call_0", name: "get_model_info", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", callId: "call_0", content: "{\"loaded\":true}" }] }
+    ]
+  });
+
+  assert.equal(sent.path, "/v1/chat/completions");
+  assert.equal(sent.body.model, "google/gemma-4-26b-a4b-it:free");
+  assert.equal(sent.body.messages[0].role, "system");
+  assert.equal(sent.body.messages[0].content, "sys");
+  assert.deepEqual(sent.body.tools[0], {
+    type: "function",
+    function: {
+      name: "get_model_info",
+      description: createDefaultRegistry().specs()[0].description,
+      parameters: createDefaultRegistry().specs()[0].inputSchema
+    }
+  });
+  assert.deepEqual(sent.body.messages[2].tool_calls[0], {
+    id: "call_0",
+    type: "function",
+    function: { name: "get_model_info", arguments: "{}" }
+  });
+  assert.deepEqual(sent.body.messages[3], {
+    role: "tool", tool_call_id: "call_0", content: "{\"loaded\":true}"
+  });
+  assert.equal(res.stopReason, "tool_use");
+  assert.deepEqual(res.content, [
+    { type: "text", text: "Checking the model." },
+    { type: "tool_call", id: "call_1", name: "get_model_info", input: {} }
+  ]);
+});
+
+test("openrouter: reports auth, quota and malformed response errors clearly", async () => {
+  const mk = (status: number, body: unknown) =>
+    new OpenRouterProvider({ transport: async () => ({ status, body }) }).complete({ system: "", messages: [], tools: [] });
+  await assert.rejects(mk(401, { error: { message: "bad key" } }), (e: any) => e instanceof ProviderError && /API key/.test(e.message) && e.status === 401);
+  await assert.rejects(mk(429, { error: { message: "slow down" } }), /rate limit.*slow down/);
+  await assert.rejects(mk(200, { choices: [] }), /Unexpected response/);
+  await assert.rejects(mk(200, { choices: [{ finish_reason: "tool_calls", message: { tool_calls: [{ id: "x", function: { name: "x", arguments: "{" } }] } }] }), /invalid JSON arguments/);
 });
