@@ -30,7 +30,7 @@ export default function App() {
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => { settingsRef.current = settings; saveSettings(settings); }, [settings]);
-  useEffect(() => { backend.hasApiKey(settings.provider).then(setHasKey).catch(() => setHasKey(false)); }, [settings.provider]);
+  useEffect(() => { setHasKey(false); backend.hasApiKey(settings.provider).then(setHasKey).catch(() => setHasKey(false)); }, [settings.provider]);
   useEffect(() => { messagesEnd.current?.scrollIntoView({ block: "end" }); }, [chat, approval]);
 
   const add = (item: ChatItem) => setChat(c => [...c, item]);
