@@ -4,10 +4,10 @@ import { StudioStore, boundsFor } from "./model/store";
 import { AgentManager, type AgentEvent, type ApprovalRequest } from "./agent/agentManager";
 import { createDefaultRegistry } from "./agent/tools";
 import { ClaudeProvider } from "./agent/providers/claude";
+import { OpenRouterProvider } from "./agent/providers/openrouter";
 import { backend } from "./agent/backend";
-import { loadSettings, saveSettings, type AppSettings } from "./settings";
+import { defaultModelFor, loadSettings, saveSettings, type AppSettings } from "./settings";
 
-const PROVIDER = "anthropic";
 type ChatItem = { kind: "user" | "assistant" | "tool" | "error"; text: string };
 
 export default function App() {
@@ -26,17 +26,19 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
   const [status, setStatus] = useState("Ready — import a model to begin.");
-  const [chat, setChat] = useState<ChatItem[]>([{ kind: "assistant", text: "Welcome to AI 3D Studio. Import an STL or GLB, add your Claude API key in Settings, then describe a change. Currently I can resize and move the whole model; part-level edits, textures and print analysis are not available yet." }]);
+  const [chat, setChat] = useState<ChatItem[]>([{ kind: "assistant", text: "Welcome to AI 3D Studio. Import an STL or GLB, add your AI provider API key in Settings, then describe a change. Currently I can resize and move the whole model; part-level edits, textures and print analysis are not available yet." }]);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => { settingsRef.current = settings; saveSettings(settings); }, [settings]);
-  useEffect(() => { backend.hasApiKey(PROVIDER).then(setHasKey).catch(() => setHasKey(false)); }, []);
+  useEffect(() => { backend.hasApiKey(settings.provider).then(setHasKey).catch(() => setHasKey(false)); }, [settings.provider]);
   useEffect(() => { messagesEnd.current?.scrollIntoView({ block: "end" }); }, [chat, approval]);
 
   const add = (item: ChatItem) => setChat(c => [...c, item]);
 
   const agent = useMemo(() => new AgentManager({
-    getProvider: () => new ClaudeProvider({ transport: backend.transport(PROVIDER), model: settingsRef.current.model }),
+    getProvider: () => settingsRef.current.provider === "openrouter"
+      ? new OpenRouterProvider({ transport: backend.transport("openrouter"), model: settingsRef.current.model })
+      : new ClaudeProvider({ transport: backend.transport("anthropic"), model: settingsRef.current.model }),
     registry: createDefaultRegistry(),
     ctx: { store },
     getPermissions: () => settingsRef.current.permissions,
@@ -126,7 +128,7 @@ export default function App() {
       </section>
 
       <aside className="right-panel panel">
-        <div className="agent-header"><div><div className="panel-heading">AI ASSISTANT</div><strong>Project agent</strong></div><span className="provider-tag">{hasKey ? "CLAUDE" : "NO KEY"}</span></div>
+        <div className="agent-header"><div><div className="panel-heading">AI ASSISTANT</div><strong>Project agent</strong></div><span className="provider-tag">{hasKey ? settings.provider.toUpperCase() : "NO KEY"}</span></div>
         <div className="agent-context"><span className="context-icon">✳</span><div><strong>Project context</strong><small>{asset ? `Inspecting ${asset.name}` : "Waiting for a model"}</small></div></div>
         <div className="messages">
           {chat.map((m, i) => m.kind === "tool"
@@ -152,7 +154,7 @@ export default function App() {
         </div>
       </aside>
     </main>
-    <footer className="statusbar"><span>● Prototype 0.2</span><span>{status}</span><span>{backend.secureStorage() ? null : <a href={releasesUrl()} target="_blank" rel="noreferrer">Download for Windows</a>} AI provider: {hasKey ? `Claude (${settings.model})` : "not connected"}</span></footer>
+    <footer className="statusbar"><span>● Prototype 0.2</span><span>{status}</span><span>{backend.secureStorage() ? null : <a href={releasesUrl()} target="_blank" rel="noreferrer">Download for Windows</a>} AI provider: {hasKey ? `${settings.provider === "openrouter" ? "OpenRouter" : "Claude"} (${settings.model})` : "not connected"}</span></footer>
     {showSettings && <SettingsDialog settings={settings} hasKey={hasKey} onChange={setSettings} onKeyChange={setHasKey} onClose={() => setShowSettings(false)} />}
   </div>;
 }
@@ -171,25 +173,31 @@ function SettingsDialog(props: { settings: AppSettings; hasKey: boolean; onChang
   const secure = backend.secureStorage();
 
   async function saveKey() {
-    try { await backend.setApiKey(PROVIDER, key); setKey(""); props.onKeyChange(true); setMsg(secure ? "Key saved to Windows Credential Manager." : "Key held in memory for this tab only."); }
+    try { await backend.setApiKey(settings.provider, key); setKey(""); props.onKeyChange(true); setMsg(secure ? "Key saved to Windows Credential Manager." : "Key held in memory for this tab only."); }
     catch (e) { setMsg(String(e)); }
   }
   async function removeKey() {
-    try { await backend.deleteApiKey(PROVIDER); props.onKeyChange(false); setMsg("Key removed."); }
+    try { await backend.deleteApiKey(settings.provider); props.onKeyChange(false); setMsg("Key removed."); }
     catch (e) { setMsg(String(e)); }
   }
 
   return <div className="modal-backdrop" onClick={props.onClose}><div className="modal" onClick={e => e.stopPropagation()}>
     <h3>Settings</h3>
-    <label className="field"><span>Claude API key {hasKey && <b className="ok">● saved</b>}</span>
-      <input type="password" autoComplete="off" value={key} placeholder={hasKey ? "Saved — enter a new key to replace it" : "sk-ant-…"} onChange={e => setKey(e.target.value)} />
+    <label className="field"><span>{settings.provider === "openrouter" ? "OpenRouter API key" : "Claude API key"} {hasKey && <b className="ok">● saved</b>}</span>
+      <input type="password" autoComplete="off" value={key} placeholder={hasKey ? "Saved — enter a new key to replace it" : settings.provider === "openrouter" ? "sk-or-v1-…" : "sk-ant-…"} onChange={e => setKey(e.target.value)} />
     </label>
     <div className="modal-row"><button onClick={saveKey} disabled={!key.trim()}>Save key</button><button className="secondary" onClick={removeKey} disabled={!hasKey}>Remove key</button></div>
     {secure
       ? <p className="muted">Stored in the OS credential store and used only by the app's backend. It is never saved in project files or browser storage.</p>
-      : <p className="muted">Web version: your key is kept in memory only, sent directly from this browser to Anthropic, and forgotten when you reload. Use a key with a spend limit.</p>}
-    <p className="muted">API usage is billed to your API account, separate from any Claude subscription.</p>
-    <label className="field"><span>Model</span><input value={settings.model} onChange={e => props.onChange({ ...settings, model: e.target.value })} /></label>
+      : <p className="muted">Web version: your key is kept in memory only, sent directly from this browser to {settings.provider === "openrouter" ? "OpenRouter" : "Anthropic"}, and forgotten when you reload. Never commit it to GitHub.</p>}
+    <p className="muted">API usage and free-model limits are controlled by your selected provider. Free model availability and rate limits can change.</p>
+    <label className="field"><span>AI provider</span>
+      <select value={settings.provider} onChange={e => { const provider = e.target.value as AppSettings["provider"]; props.onChange({ ...settings, provider, model: defaultModelFor(provider) }); }}>
+        <option value="openrouter">OpenRouter (free models available)</option>
+        <option value="anthropic">Claude (Anthropic)</option>
+      </select>
+    </label>
+    <label className="field"><span>Model ID</span><input value={settings.model} onChange={e => props.onChange({ ...settings, model: e.target.value })} /></label>
     <label className="check"><input type="checkbox" checked={settings.permissions.autoApplyLowRisk}
       onChange={e => props.onChange({ ...settings, permissions: { ...settings.permissions, autoApplyLowRisk: e.target.checked } })} />
       Let the assistant apply small changes without asking (large changes always need approval)</label>
