@@ -242,6 +242,7 @@ async function streamResponse(body) {
       try { parsed = JSON.parse(data); } catch { continue; }
       if (parsed.type === "response.completed") completed = parsed.response;
       if (parsed.type === "response.failed") throw new Error(parsed.response?.error?.message || "ChatGPT response failed.");
+      if (parsed.type === "response.incomplete") throw new Error(`ChatGPT response was incomplete: ${parsed.response?.incomplete_details?.reason || "unknown reason"}.`);
       if (parsed.type === "error") throw new Error(parsed.message || "ChatGPT stream failed.");
     }
     if (done) break;
