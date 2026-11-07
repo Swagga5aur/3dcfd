@@ -61,11 +61,12 @@ async function credentials() { await ensureDir(); return readJson(CREDS_FILE); }
 async function saveCredentials(value) { await ensureDir(); await writePrivate(CREDS_FILE, value); }
 
 function randomValue(bytes = 32) { return randomBytes(bytes).toString("base64url"); }
+function escapeHtml(value) { return String(value).replace(/[&<>\"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[ch])); }
 function htmlPage(title, message) {
   return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-  <title>${title}</title><style>body{font:16px system-ui;background:#10151d;color:#e9eef5;display:grid;place-items:center;min-height:90vh}
+  <title>${escapeHtml(title)}</title><style>body{font:16px system-ui;background:#10151d;color:#e9eef5;display:grid;place-items:center;min-height:90vh}
   main{max-width:520px;padding:32px;border:1px solid #303b4b;border-radius:14px;background:#18212d}h1{font-size:22px}</style>
-  <main><h1>${title}</h1><p>${message}</p><p>You can close this tab and return to AI 3D Studio.</p></main>`;
+  <main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><p>You can close this tab and return to AI 3D Studio.</p></main>`;
 }
 function send(res, status, value) {
   const body = JSON.stringify(value);
@@ -253,6 +254,7 @@ async function streamResponse(body) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (req.headers.host !== HOST + ':' + PORT) return send(res, 403, { error: 'Invalid Host header.' });
     if (!cors(req, res)) return send(res, 403, { error: "Origin not allowed." });
     if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
     const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
