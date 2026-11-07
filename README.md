@@ -35,7 +35,7 @@ Web vs desktop:
 
 | | Desktop (Tauri) | Web (Pages) |
 | --- | --- | --- |
-| API key | Windows Credential Manager, used only in Rust | Held in page memory, lost on reload |\n| ChatGPT plan | Planned via local helper | Local helper on Windows/Linux/macOS; no browser token storage |
+| API key | Windows Credential Manager, used only in Rust | Held in page memory, lost on reload |\n| ChatGPT plan | Local helper on Windows/Linux/macOS | Local helper on Windows/Linux/macOS; no browser token storage |
 | API calls | Via Rust, fixed host allowlist | Direct from browser to selected provider |
 | Everything else | Same | Same |
 
