@@ -99,7 +99,7 @@ export default function App() {
   const asset = state.asset;
   const bounds = asset ? boundsFor(asset, state.transform) : null;
   const connected = settings.provider === "chatgpt" ? chatGPTConnected : hasKey;
-  const canChat = connected && !!asset;
+  const canChat = connected && !!asset && (settings.provider !== "chatgpt" || !!settings.model);
 
   return <div className="app-shell">
     <header className="topbar">
@@ -185,7 +185,19 @@ function SettingsDialog(props: { settings: AppSettings; hasKey: boolean; chatGPT
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState("");
   const [checking, setChecking] = useState(false);
+  const [chatGPTModels, setChatGPTModels] = useState<Array<{ id: string; name: string }>>([]);
   const secure = backend.secureStorage();
+
+  useEffect(() => {
+    if (settings.provider === "chatgpt" && props.chatGPTConnected) {
+      backend.chatgptModels().then(models => {
+        setChatGPTModels(models);
+        if (models.length && !models.some(m => m.id === settings.model)) {
+          props.onChange({ ...settings, model: models[0].id });
+        }
+      }).catch(e => setMsg(String(e)));
+    }
+  }, [settings.provider, props.chatGPTConnected]);
 
   async function refreshChatGPT() {
     setChecking(true);
@@ -235,7 +247,12 @@ function SettingsDialog(props: { settings: AppSettings; hasKey: boolean; chatGPT
         <option value="anthropic">Claude (Anthropic)</option>
       </select>
     </label>
-    <label className="field"><span>Model ID</span><input value={settings.model} onChange={e => props.onChange({ ...settings, model: e.target.value })} /></label>
+    {settings.provider === "chatgpt" ? <label className="field"><span>ChatGPT model</span>
+      <select value={settings.model} disabled={!chatGPTModels.length} onChange={e => props.onChange({ ...settings, model: e.target.value })}>
+        {!chatGPTModels.length && <option value="">Connect ChatGPT to load available models</option>}
+        {chatGPTModels.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+      </select>
+    </label> : <label className="field"><span>Model ID</span><input value={settings.model} onChange={e => props.onChange({ ...settings, model: e.target.value })} /></label>}
     <label className="check"><input type="checkbox" checked={settings.permissions.autoApplyLowRisk}
       onChange={e => props.onChange({ ...settings, permissions: { ...settings.permissions, autoApplyLowRisk: e.target.checked } })} />
       Let the assistant apply small changes without asking (large changes always need approval)</label>
