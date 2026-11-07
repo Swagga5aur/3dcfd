@@ -4,7 +4,7 @@ import {
   type ProviderRequest, type ProviderResponse, type Transport
 } from "../types";
 
-export const CHATGPT_DEFAULT_MODEL = "gpt-5.4";
+export const CHATGPT_DEFAULT_MODEL = "";
 
 interface ChatGPTOptions { transport: Transport; model?: string; maxTokens?: number; }
 
@@ -13,7 +13,7 @@ export class ChatGPTProvider implements AgentProvider {
   readonly id = "chatgpt";
   readonly label: string;
   constructor(private opts: ChatGPTOptions) {
-    this.label = `ChatGPT (${opts.model ?? CHATGPT_DEFAULT_MODEL})`;
+    this.label = `ChatGPT (${opts.model || "selected account model"})`;
   }
 
   async complete(req: ProviderRequest): Promise<ProviderResponse> {
@@ -22,7 +22,7 @@ export class ChatGPTProvider implements AgentProvider {
     const { status, body } = await this.opts.transport({
       path: "/v1/responses",
       body: {
-        model: this.opts.model ?? CHATGPT_DEFAULT_MODEL,
+        model: this.opts.model,
         instructions: req.system,
         input,
         max_output_tokens: this.opts.maxTokens ?? 2048,
