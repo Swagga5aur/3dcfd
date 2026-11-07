@@ -32,6 +32,10 @@ export const backend = {
   async chatgptStatus(): Promise<{ connected: boolean; email?: string | null; name?: string | null }> {
     return localRequest("/status");
   },
+  async chatgptModels(): Promise<Array<{ id: string; name: string }>> {
+    const result = await localRequest("/models") as { models?: Array<{ id: string; name: string }> };
+    return result.models || [];
+  },
   async connectChatGPT(): Promise<void> { await localRequest("/auth/start", "POST", {}); },
   async disconnectChatGPT(): Promise<void> { await localRequest("/auth/disconnect", "POST", {}); },
   async hasApiKey(provider: string): Promise<boolean> {
