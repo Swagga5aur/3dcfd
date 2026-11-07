@@ -26,6 +26,11 @@ jobs:
       - run: npm install        # switch to `npm ci` after committing package-lock.json
       - run: npm test
       - run: npm run build      # tsc + vite build -> dist/
+      - name: Validate local runtime
+        run: |
+          cd local-runtime
+          npm install
+          node --check server.mjs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
