@@ -11,7 +11,7 @@ A lean Windows desktop starter for AI-assisted 3D model creation and modificatio
 - Export STL
 - Basic model inspection
 - Scale and translation operations
-- **AI agent** (OpenRouter or Claude) that inspects the model and acts only through validated tools
+- **AI agent** (ChatGPT plan usage, OpenRouter or Claude) that inspects the model and acts only through validated tools
 - Provider-independent `AgentProvider` interface with OpenRouter and Claude adapters
 - API key stored in Windows Credential Manager via Rust; never in the webview, project files or browser storage
 - Hybrid permissions: small changes auto-apply, larger ones show a preview and need approval
@@ -25,7 +25,7 @@ This is a foundation, not a finished product. The agent logic is unit-tested; th
 
 The first version applies object-level transforms in the viewport after approval. Project saving currently stores metadata and transform state, not the imported geometry asset. True undo/redo, remeshing, sculpting, support analysis, texture displacement, multicolour 3MF export, and image/text-to-3D generation are not implemented yet.
 
-## Run in the browser (GitHub Pages)
+## Use your ChatGPT plan (Windows / Linux / macOS)\n\nThe web app can connect to Sign in with ChatGPT through a small local Node.js helper. The helper stores OAuth credentials on the computer and sends Responses API requests with the required plan-usage permissions; the browser never handles the tokens. This is separate from the OpenAI API and does not require an API key or API billing account. ChatGPT plan eligibility and usage limits apply.\n\n1. Install Node.js 20.19 or newer.\n2. Open a terminal in `local-runtime/`.\n3. Run `npm install` once, then `npm start`.\n4. Open the GitHub Pages site, choose **Settings → AI provider → ChatGPT plan**, then **Continue with ChatGPT**.\n5. Complete sign-in in your browser, return to the app, and click **Check connection**.\n\nThe helper must remain running while using ChatGPT plan access. The same setup works on Windows and Linux; only the web app itself needs to be open in your browser. See [`local-runtime/README.md`](local-runtime/README.md) for details.\n\n## Run in the browser (GitHub Pages)
 
 The app also runs as a static web page, like ScanRuler. The workflow `.github/workflows/pages.yml` tests, builds and deploys it on every push to `main`.
 
@@ -35,7 +35,7 @@ Web vs desktop:
 
 | | Desktop (Tauri) | Web (Pages) |
 | --- | --- | --- |
-| API key | Windows Credential Manager, used only in Rust | Held in page memory, lost on reload |
+| API key | Windows Credential Manager, used only in Rust | Held in page memory, lost on reload |\n| ChatGPT plan | Local helper on Windows/Linux/macOS | Local helper on Windows/Linux/macOS; no browser token storage |
 | API calls | Via Rust, fixed host allowlist | Direct from browser to selected provider |
 | Everything else | Same | Same |
 

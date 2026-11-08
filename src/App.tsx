@@ -5,6 +5,7 @@ import { AgentManager, type AgentEvent, type ApprovalRequest } from "./agent/age
 import { createDefaultRegistry } from "./agent/tools";
 import { ClaudeProvider } from "./agent/providers/claude";
 import { OpenRouterProvider } from "./agent/providers/openrouter";
+import { ChatGPTProvider } from "./agent/providers/chatgpt";
 import { backend } from "./agent/backend";
 import { defaultModelFor, loadSettings, saveSettings, type AppSettings } from "./settings";
 
@@ -21,6 +22,7 @@ export default function App() {
 
   const [settings, setSettings] = useState(settingsRef.current);
   const [hasKey, setHasKey] = useState(false);
+  const [chatGPTConnected, setChatGPTConnected] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,15 +32,26 @@ export default function App() {
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => { settingsRef.current = settings; saveSettings(settings); }, [settings]);
-  useEffect(() => { setHasKey(false); backend.hasApiKey(settings.provider).then(setHasKey).catch(() => setHasKey(false)); }, [settings.provider]);
+  useEffect(() => {
+    if (settings.provider === "chatgpt") {
+      setHasKey(false);
+      backend.chatgptStatus().then(s => setChatGPTConnected(s.connected)).catch(() => setChatGPTConnected(false));
+    } else {
+      setChatGPTConnected(false);
+      setHasKey(false);
+      backend.hasApiKey(settings.provider).then(setHasKey).catch(() => setHasKey(false));
+    }
+  }, [settings.provider]);
   useEffect(() => { messagesEnd.current?.scrollIntoView({ block: "end" }); }, [chat, approval]);
 
   const add = (item: ChatItem) => setChat(c => [...c, item]);
 
   const agent = useMemo(() => new AgentManager({
-    getProvider: () => settingsRef.current.provider === "openrouter"
-      ? new OpenRouterProvider({ transport: backend.transport("openrouter"), model: settingsRef.current.model })
-      : new ClaudeProvider({ transport: backend.transport("anthropic"), model: settingsRef.current.model }),
+    getProvider: () => settingsRef.current.provider === "chatgpt"
+      ? new ChatGPTProvider({ transport: backend.transport("chatgpt"), model: settingsRef.current.model })
+      : settingsRef.current.provider === "openrouter"
+        ? new OpenRouterProvider({ transport: backend.transport("openrouter"), model: settingsRef.current.model })
+        : new ClaudeProvider({ transport: backend.transport("anthropic"), model: settingsRef.current.model }),
     registry: createDefaultRegistry(),
     ctx: { store },
     getPermissions: () => settingsRef.current.permissions,
@@ -85,7 +98,8 @@ export default function App() {
 
   const asset = state.asset;
   const bounds = asset ? boundsFor(asset, state.transform) : null;
-  const canChat = hasKey && !!asset;
+  const connected = settings.provider === "chatgpt" ? chatGPTConnected : hasKey;
+  const canChat = connected && !!asset && (settings.provider !== "chatgpt" || !!settings.model);
 
   return <div className="app-shell">
     <header className="topbar">
@@ -128,7 +142,7 @@ export default function App() {
       </section>
 
       <aside className="right-panel panel">
-        <div className="agent-header"><div><div className="panel-heading">AI ASSISTANT</div><strong>Project agent</strong></div><span className="provider-tag">{hasKey ? settings.provider.toUpperCase() : "NO KEY"}</span></div>
+        <div className="agent-header"><div><div className="panel-heading">AI ASSISTANT</div><strong>Project agent</strong></div><span className="provider-tag">{connected ? settings.provider.toUpperCase() : settings.provider === "chatgpt" ? "NOT CONNECTED" : "NO KEY"}</span></div>
         <div className="agent-context"><span className="context-icon">✳</span><div><strong>Project context</strong><small>{asset ? `Inspecting ${asset.name}` : "Waiting for a model"}</small></div></div>
         <div className="messages">
           {chat.map((m, i) => m.kind === "tool"
@@ -145,7 +159,7 @@ export default function App() {
           <div ref={messagesEnd} />
         </div>
         <div className="composer">
-          <div className="composer-hint">{!hasKey ? "Add your API key in Settings to enable the assistant." : !asset ? "Import a model first." : "e.g. “make it 10% larger” or “move it up by 5”"}</div>
+          <div className="composer-hint">{!connected ? settings.provider === "chatgpt" ? "Connect ChatGPT in Settings and keep the local runtime running." : "Add your API key in Settings to enable the assistant." : !asset ? "Import a model first." : "e.g. “make it 10% larger” or “move it up by 5”"}</div>
           <textarea value={prompt} disabled={!canChat} onChange={e => setPrompt(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Describe a change to your model..." />
           <div className="composer-bottom"><span>Large changes need approval</span>
@@ -154,8 +168,8 @@ export default function App() {
         </div>
       </aside>
     </main>
-    <footer className="statusbar"><span>● Prototype 0.2</span><span>{status}</span><span>{backend.secureStorage() ? null : <a href={releasesUrl()} target="_blank" rel="noreferrer">Download for Windows</a>} AI provider: {hasKey ? `${settings.provider === "openrouter" ? "OpenRouter" : "Claude"} (${settings.model})` : "not connected"}</span></footer>
-    {showSettings && <SettingsDialog settings={settings} hasKey={hasKey} onChange={setSettings} onKeyChange={setHasKey} onClose={() => setShowSettings(false)} />}
+    <footer className="statusbar"><span>● Prototype 0.2</span><span>{status}</span><span>{backend.secureStorage() ? null : <a href={releasesUrl()} target="_blank" rel="noreferrer">Download for Windows</a>} AI provider: {connected ? `${settings.provider === "openrouter" ? "OpenRouter" : settings.provider === "chatgpt" ? "ChatGPT plan" : "Claude"} (${settings.model})` : "not connected"}</span></footer>
+    {showSettings && <SettingsDialog settings={settings} hasKey={hasKey} chatGPTConnected={chatGPTConnected} onChange={setSettings} onKeyChange={setHasKey} onChatGPTChange={setChatGPTConnected} onClose={() => setShowSettings(false)} />}
   </div>;
 }
 
@@ -166,11 +180,39 @@ function releasesUrl() {
   return hostname.endsWith(".github.io") && repo ? `https://github.com/${hostname.split(".")[0]}/${repo}/releases/latest` : "#";
 }
 
-function SettingsDialog(props: { settings: AppSettings; hasKey: boolean; onChange: (s: AppSettings) => void; onKeyChange: (b: boolean) => void; onClose: () => void }) {
+function SettingsDialog(props: { settings: AppSettings; hasKey: boolean; chatGPTConnected: boolean; onChange: (s: AppSettings) => void; onKeyChange: (b: boolean) => void; onChatGPTChange: (b: boolean) => void; onClose: () => void }) {
   const { settings, hasKey } = props;
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [chatGPTModels, setChatGPTModels] = useState<Array<{ id: string; name: string }>>([]);
   const secure = backend.secureStorage();
+
+  useEffect(() => {
+    if (settings.provider === "chatgpt" && props.chatGPTConnected) {
+      backend.chatgptModels().then(models => {
+        setChatGPTModels(models);
+        if (models.length && !models.some(m => m.id === settings.model)) {
+          props.onChange({ ...settings, model: models[0].id });
+        }
+      }).catch(e => setMsg(String(e)));
+    }
+  }, [settings.provider, props.chatGPTConnected]);
+
+  async function refreshChatGPT() {
+    setChecking(true);
+    try { const s = await backend.chatgptStatus(); props.onChatGPTChange(s.connected); setMsg(s.connected ? `Connected to ChatGPT${s.email ? ` as ${s.email}` : ""}.` : "ChatGPT is not connected yet."); }
+    catch (e) { props.onChatGPTChange(false); setMsg(String(e)); }
+    finally { setChecking(false); }
+  }
+  async function connectChatGPT() {
+    try { await backend.connectChatGPT(); setMsg("Sign-in opened in your browser. Complete the permission step, then return here and check the connection."); }
+    catch (e) { setMsg(String(e)); }
+  }
+  async function disconnectChatGPT() {
+    try { await backend.disconnectChatGPT(); props.onChatGPTChange(false); setMsg("ChatGPT disconnected."); }
+    catch (e) { setMsg(String(e)); }
+  }
 
   async function saveKey() {
     try { await backend.setApiKey(settings.provider, key); setKey(""); props.onKeyChange(true); setMsg(secure ? "Key saved to Windows Credential Manager." : "Key held in memory for this tab only."); }
@@ -183,6 +225,12 @@ function SettingsDialog(props: { settings: AppSettings; hasKey: boolean; onChang
 
   return <div className="modal-backdrop" onClick={props.onClose}><div className="modal" onClick={e => e.stopPropagation()}>
     <h3>Settings</h3>
+    {settings.provider === "chatgpt" ? <div className="field">
+      <span>ChatGPT plan connection {props.chatGPTConnected && <b className="ok">● connected</b>}</span>
+      <p className="muted">Sign in with ChatGPT to use eligible requests through your plan. Your credentials stay on this computer in the local runtime; they are not stored in this browser.</p>
+      <div className="modal-row"><button onClick={connectChatGPT} disabled={props.chatGPTConnected}>Continue with ChatGPT</button><button className="secondary" onClick={refreshChatGPT} disabled={checking}>{checking ? "Checking…" : "Check connection"}</button><button className="secondary" onClick={disconnectChatGPT} disabled={!props.chatGPTConnected}>Disconnect</button></div>
+      <p className="muted">Keep the local runtime running while using the web app. ChatGPT plan limits apply and may be shared with other connected apps.</p>
+    </div> : <>
     <label className="field"><span>{settings.provider === "openrouter" ? "OpenRouter API key" : "Claude API key"} {hasKey && <b className="ok">● saved</b>}</span>
       <input type="password" autoComplete="off" value={key} placeholder={hasKey ? "Saved — enter a new key to replace it" : settings.provider === "openrouter" ? "sk-or-v1-…" : "sk-ant-…"} onChange={e => setKey(e.target.value)} />
     </label>
@@ -191,13 +239,20 @@ function SettingsDialog(props: { settings: AppSettings; hasKey: boolean; onChang
       ? <p className="muted">Stored in the OS credential store and used only by the app's backend. It is never saved in project files or browser storage.</p>
       : <p className="muted">Web version: your key is kept in memory only, sent directly from this browser to {settings.provider === "openrouter" ? "OpenRouter" : "Anthropic"}, and forgotten when you reload. Never commit it to GitHub.</p>}
     <p className="muted">API usage and free-model limits are controlled by your selected provider. Free model availability and rate limits can change.</p>
+    </>}
     <label className="field"><span>AI provider</span>
       <select value={settings.provider} onChange={e => { const provider = e.target.value as AppSettings["provider"]; props.onChange({ ...settings, provider, model: defaultModelFor(provider) }); }}>
+        <option value="chatgpt">ChatGPT plan (local runtime)</option>
         <option value="openrouter">OpenRouter (free models available)</option>
         <option value="anthropic">Claude (Anthropic)</option>
       </select>
     </label>
-    <label className="field"><span>Model ID</span><input value={settings.model} onChange={e => props.onChange({ ...settings, model: e.target.value })} /></label>
+    {settings.provider === "chatgpt" ? <label className="field"><span>ChatGPT model</span>
+      <select value={settings.model} disabled={!chatGPTModels.length} onChange={e => props.onChange({ ...settings, model: e.target.value })}>
+        {!chatGPTModels.length && <option value="">Connect ChatGPT to load available models</option>}
+        {chatGPTModels.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+      </select>
+    </label> : <label className="field"><span>Model ID</span><input value={settings.model} onChange={e => props.onChange({ ...settings, model: e.target.value })} /></label>}
     <label className="check"><input type="checkbox" checked={settings.permissions.autoApplyLowRisk}
       onChange={e => props.onChange({ ...settings, permissions: { ...settings.permissions, autoApplyLowRisk: e.target.checked } })} />
       Let the assistant apply small changes without asking (large changes always need approval)</label>
